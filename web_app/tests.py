@@ -1,6 +1,9 @@
 from django.core.exceptions import ImproperlyConfigured
 from django.contrib.auth.models import User
-from django.test import Client, SimpleTestCase, TestCase
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.db.models.deletion import ProtectedError
+from django.test import Client, SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
 
 from main_CRM.settings import (
@@ -216,3 +219,52 @@ class CRMAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Clint.objects.filter(pk=self.clint.pk).exists())
+
+    def test_category_with_clients_cannot_be_deleted(self):
+        with self.assertRaises(ProtectedError):
+            self.category.delete()
+
+        self.assertTrue(Clint.objects.filter(pk=self.clint.pk).exists())
+
+    def test_client_string_conversion_accepts_missing_last_name(self):
+        clint = Clint.objects.create(first_name="Samir", category=self.category)
+
+        self.assertEqual(str(clint), "Samir")
+
+    def test_phone_field_preserves_leading_zeroes(self):
+        clint = Clint.objects.create(
+            first_name="Hana", phone="012345", category=self.category
+        )
+
+        self.assertEqual(Clint.objects.get(pk=clint.pk).phone, "012345")
+
+
+class ClientDataMigrationTests(TransactionTestCase):
+    migrate_from = [("web_app", "0003_alter_clint_options_alter_clint_created_at")]
+    migrate_to = [("web_app", "0004_alter_clint_category_alter_clint_phone")]
+
+    def setUp(self):
+        super().setUp()
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+        category_model = old_apps.get_model("web_app", "Category")
+        clint_model = old_apps.get_model("web_app", "Clint")
+        category = category_model.objects.create(name="Legacy")
+        clint_model.objects.create(
+            first_name="Existing", last_name=None, phone=12345, category=category
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_to)
+        self.apps_after_migration = executor.loader.project_state(self.migrate_to).apps
+
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        super().tearDown()
+
+    def test_existing_phone_values_survive_conversion_to_text(self):
+        clint_model = self.apps_after_migration.get_model("web_app", "Clint")
+
+        self.assertEqual(clint_model.objects.get(first_name="Existing").phone, "12345")
