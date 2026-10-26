@@ -21,7 +21,7 @@ A small server-rendered Django application for maintaining client records and as
 - Ruff for linting and formatting
 - GitHub Actions for checks and tests
 
-Dependencies are pinned in `requirements.txt`; development tooling is in `requirements-dev.txt`.
+Dependencies are pinned in `requirements.txt`; development tooling is in `requirements-dev.txt`. Pip and these requirements files are the supported dependency workflow; project setup does not use uv.
 
 ## Project structure
 
@@ -62,6 +62,8 @@ Use `python manage.py createsuperuser` for the initial administrator. An authori
 
 Categories are managed in Django admin at `/admin/`; the project does not have a separate category-management page. Staff select a category when creating or editing a client. A category that still has clients cannot be deleted, protecting those records. SQLite is the configured database.
 
+Migration `0002` assigns clients that predate categories to a clearly named `Uncategorized (legacy migration)` category. It creates this category only when such client rows exist, adds a suffix if that category name is already taken, preserves each client row, and then enforces the required category relationship. Databases that already recorded `0002` as applied do not rerun the edited historical migration; later migrations retain existing valid category relationships.
+
 The staff dashboard supports adding clients, viewing and editing a record, deleting through a CSRF-protected POST form, searching by name or ID, and paging through results. Phone numbers are text values so new input can retain leading zeroes. The migration converts existing integer values to text, but cannot recover leading zeroes already lost before conversion.
 
 ## Configuration and deployment
@@ -98,6 +100,5 @@ GitHub Actions runs these checks on pushes to `mahmoud` and pull requests target
 - Client records are shared across staff accounts; there is no per-record owner or multi-tenant separation.
 - Category CRUD is available in Django admin, not in a separate application page.
 - SQLite is the configured database; other database engines are not currently supported by project settings.
-- Historical migration `0002` can fail if client rows already exist before the required category field is added and category ID `0` is absent. A regression test preserves this scenario but is skipped until an approved migration strategy is chosen; the existing local database was not migrated or changed.
 - Historical Git commits may still contain the former database and development signing key.
 - Browser-based visual testing has not been performed as part of this change.

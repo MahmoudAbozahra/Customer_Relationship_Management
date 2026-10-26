@@ -1,5 +1,3 @@
-from unittest import skip
-
 from django.contrib.auth.models import User
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
@@ -106,13 +104,25 @@ class CRMAccessTests(TestCase):
     def test_staff_users_can_view_dashboard_detail_and_search(self):
         self.client.force_login(self.staff_user)
 
-        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+        dashboard_response = self.client.get(reverse("dashboard"))
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertContains(dashboard_response, 'class="table-dark"')
         self.assertEqual(
             self.client.get(reverse("view", args=[self.clint.pk])).status_code, 200
         )
         self.assertEqual(
             self.client.get(reverse("search"), {"query": "Rania"}).status_code, 200
         )
+
+    def test_staff_can_manage_categories_in_django_admin(self):
+        self.staff_user.is_superuser = True
+        self.staff_user.save(update_fields=["is_superuser"])
+        self.client.force_login(self.staff_user)
+
+        response = self.client.get(reverse("admin:web_app_category_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.category.name)
 
     def test_invalid_registration_displays_errors_without_creating_user(self):
         response = self.client.post(
@@ -136,9 +146,11 @@ class CRMAccessTests(TestCase):
                 "password1": "Strong-pass-4819",
                 "password2": "Strong-pass-4819",
             },
+            follow=True,
         )
 
-        self.assertRedirects(response, reverse("my_login"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Your account was created. You can now sign in.")
         new_user = User.objects.get(username="new-user")
         self.assertFalse(new_user.is_staff)
         self.assertFalse(new_user.is_superuser)
@@ -293,18 +305,23 @@ class ClientDataMigrationTests(TransactionTestCase):
         self.assertEqual(clint_model.objects.get(first_name="Existing").phone, "12345")
 
 
-class CategoryAssignmentMigrationTests(TransactionTestCase):
-    migrate_from = (("web_app", "0001_initial"),)
-    migrate_to = (("web_app", "0002_clint_category_alter_clint_address_and_more"),)
+class MigrationTestCase(TransactionTestCase):
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        super().tearDown()
 
+
+class LegacyClientMigrationTests(MigrationTestCase):
     def setUp(self):
         super().setUp()
+        migrate_from = [("web_app", "0001_initial")]
         executor = MigrationExecutor(connection)
-        executor.migrate(self.migrate_from)
-        old_apps = executor.loader.project_state(self.migrate_from).apps
+        executor.migrate(migrate_from)
+        old_apps = executor.loader.project_state(migrate_from).apps
         category_model = old_apps.get_model("web_app", "Category")
         clint_model = old_apps.get_model("web_app", "Clint")
-        category_model.objects.create(name="Existing category")
+        category_model.objects.create(name="Uncategorized (legacy migration)")
         clint_model.objects.create(
             first_name="Legacy client",
             last_name="Record",
@@ -315,19 +332,96 @@ class CategoryAssignmentMigrationTests(TransactionTestCase):
         )
 
         executor = MigrationExecutor(connection)
-        executor.migrate(self.migrate_to)
-        self.apps_after_migration = executor.loader.project_state(self.migrate_to).apps
-
-    def tearDown(self):
-        executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
-        super().tearDown()
+        self.apps_after_migration = executor.loader.project_state(
+            executor.loader.graph.leaf_nodes()
+        ).apps
 
-    @skip("Waiting for approval to fix historical migration 0002.")
-    def test_existing_clients_receive_a_valid_category(self):
+    def test_legacy_client_is_preserved_and_given_a_valid_fallback_category(self):
         category_model = self.apps_after_migration.get_model("web_app", "Category")
         clint_model = self.apps_after_migration.get_model("web_app", "Clint")
         clint = clint_model.objects.get(first_name="Legacy client")
 
+        self.assertEqual(clint_model.objects.count(), 1)
         self.assertIsNotNone(clint.category_id)
         self.assertTrue(category_model.objects.filter(pk=clint.category_id).exists())
+        self.assertEqual(
+            category_model.objects.get(pk=clint.category_id).name,
+            "Uncategorized (legacy migration) (2)",
+        )
+        self.assertEqual(clint.phone, "12345")
+        self.assertEqual(clint.address, "Legacy address")
+        self.assertEqual(clint.tall, 170)
+        self.assertEqual(clint.wight, 75)
+
+
+class LegacyEmptyDatabaseMigrationTests(MigrationTestCase):
+    def test_legacy_database_without_clients_migrates_without_fallback_data(self):
+        migrate_from = [("web_app", "0001_initial")]
+        executor = MigrationExecutor(connection)
+        executor.migrate(migrate_from)
+        old_apps = executor.loader.project_state(migrate_from).apps
+        old_apps.get_model("web_app", "Category").objects.create(name="Existing")
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        final_apps = executor.loader.project_state(
+            executor.loader.graph.leaf_nodes()
+        ).apps
+        category_model = final_apps.get_model("web_app", "Category")
+        clint_model = final_apps.get_model("web_app", "Clint")
+
+        self.assertEqual(clint_model.objects.count(), 0)
+        self.assertEqual(
+            list(category_model.objects.values_list("name", flat=True)), ["Existing"]
+        )
+
+
+class FreshInstallationMigrationTests(MigrationTestCase):
+    def test_empty_database_migrates_from_zero_to_latest(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([("web_app", None)])
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        final_apps = executor.loader.project_state(
+            executor.loader.graph.leaf_nodes()
+        ).apps
+
+        self.assertEqual(final_apps.get_model("web_app", "Category").objects.count(), 0)
+        self.assertEqual(final_apps.get_model("web_app", "Clint").objects.count(), 0)
+
+
+class ExistingCategoryMigrationCompatibilityTests(MigrationTestCase):
+    def test_database_already_at_0002_keeps_existing_category_relationship(self):
+        migrate_to = [("web_app", "0002_clint_category_alter_clint_address_and_more")]
+        executor = MigrationExecutor(connection)
+        executor.migrate(migrate_to)
+        old_apps = executor.loader.project_state(migrate_to).apps
+        category_model = old_apps.get_model("web_app", "Category")
+        clint_model = old_apps.get_model("web_app", "Clint")
+        category = category_model.objects.create(name="Assigned")
+        clint_model.objects.create(
+            first_name="Already migrated",
+            last_name="Record",
+            phone=54321,
+            tall=175,
+            wight=80,
+            address="Existing address",
+            category_id=category.pk,
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        final_apps = executor.loader.project_state(
+            executor.loader.graph.leaf_nodes()
+        ).apps
+        final_clint_model = final_apps.get_model("web_app", "Clint")
+        final_category_model = final_apps.get_model("web_app", "Category")
+        clint = final_clint_model.objects.get(first_name="Already migrated")
+
+        self.assertEqual(clint.category_id, category.pk)
+        self.assertTrue(
+            final_category_model.objects.filter(pk=clint.category_id).exists()
+        )
+        self.assertEqual(clint.phone, "54321")

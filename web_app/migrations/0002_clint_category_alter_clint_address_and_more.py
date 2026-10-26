@@ -4,6 +4,31 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def assign_legacy_clients_to_fallback_category(apps, schema_editor):
+    """Give pre-category client records an explicit, valid fallback category."""
+    category_model = apps.get_model("web_app", "Category")
+    clint_model = apps.get_model("web_app", "Clint")
+    database = schema_editor.connection.alias
+    clients_without_category = clint_model.objects.using(database).filter(
+        category__isnull=True
+    )
+
+    if not clients_without_category.exists():
+        return
+
+    base_name = "Uncategorized (legacy migration)"
+    name = base_name
+    suffix = 2
+    categories = category_model.objects.using(database)
+    while categories.filter(name=name).exists():
+        ending = f" ({suffix})"
+        name = f"{base_name[:250 - len(ending)]}{ending}"
+        suffix += 1
+
+    fallback_category = categories.create(name=name)
+    clients_without_category.update(category_id=fallback_category.pk)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -14,8 +39,16 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='clint',
             name='category',
-            field=models.ForeignKey(default=0, on_delete=django.db.models.deletion.CASCADE, to='web_app.category'),
-            preserve_default=False,
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='web_app.category'),
+        ),
+        migrations.RunPython(
+            assign_legacy_clients_to_fallback_category,
+            migrations.RunPython.noop,
+        ),
+        migrations.AlterField(
+            model_name='clint',
+            name='category',
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='web_app.category'),
         ),
         migrations.AlterField(
             model_name='clint',
