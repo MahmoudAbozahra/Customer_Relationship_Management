@@ -1,20 +1,16 @@
-{% extends 'base.html'%} {% load crispy_forms_tags %} {% block content %}
-
-<div class="container bg-light shadow-md p-5 form-layout">
-
-    <h1>Login </h1>
-    {% include 'parts/alerts.html' %}
-
-    <hr>
-    <form method="POST" ,autocomplete="off">
-
-        {% csrf_token %} {{form|crispy}} 
-        <br>
-
-        <button type="submit" class="btn btn-outline-primary ">Login <i class="fa fa-key" aria-hidden="true"></i></button>
-
-    </form>
-
-</div>
-
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block content %}
+<section class="container py-5" style="max-width: 36rem">
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <h1 class="h2">Sign in</h1>
+      <form method="post" autocomplete="off">
+        {% csrf_token %}
+        {{ form|crispy }}
+        <button type="submit" class="btn btn-primary">Sign in</button>
+      </form>
+    </div>
+  </div>
+</section>
 {% endblock content %}

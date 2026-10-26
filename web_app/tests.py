@@ -1,10 +1,13 @@
 from django.core.exceptions import ImproperlyConfigured
-from django.test import SimpleTestCase
+from django.contrib.auth.models import User
+from django.test import Client, SimpleTestCase, TestCase
+from django.urls import reverse
 
 from main_CRM.settings import (
     _deployment_security_configuration,
     _security_configuration,
 )
+from web_app.models import Category, Clint
 
 
 class SecurityConfigurationTests(SimpleTestCase):
@@ -49,3 +52,167 @@ class SecurityConfigurationTests(SimpleTestCase):
             _deployment_security_configuration(
                 {"DJANGO_SECURE_HSTS_SECONDS": "-1"}, debug=False
             )
+
+
+class CRMAccessTests(TestCase):
+    def setUp(self):
+        self.category = Category.objects.create(name="General")
+        self.clint = Clint.objects.create(
+            first_name="Rania", last_name="Test", category=self.category
+        )
+        self.staff_user = User.objects.create_user(
+            username="staff", password="Strong-pass-4819", is_staff=True
+        )
+        self.regular_user = User.objects.create_user(
+            username="regular", password="Strong-pass-4819"
+        )
+
+    def test_anonymous_users_cannot_access_customer_views(self):
+        paths = [
+            reverse("dashboard"),
+            reverse("add_clint"),
+            reverse("view", args=[self.clint.pk]),
+            reverse("edit", args=[self.clint.pk]),
+            reverse("search"),
+        ]
+
+        for path in paths:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertRedirects(response, f"{reverse('my_login')}?next={path}")
+
+    def test_regular_users_cannot_access_customer_views(self):
+        self.client.force_login(self.regular_user)
+        paths = [
+            reverse("dashboard"),
+            reverse("add_clint"),
+            reverse("view", args=[self.clint.pk]),
+            reverse("edit", args=[self.clint.pk]),
+            reverse("search"),
+        ]
+
+        for path in paths:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertRedirects(response, f"{reverse('my_login')}?next={path}")
+
+    def test_staff_users_can_view_dashboard_detail_and_search(self):
+        self.client.force_login(self.staff_user)
+
+        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+        self.assertEqual(
+            self.client.get(reverse("view", args=[self.clint.pk])).status_code, 200
+        )
+        self.assertEqual(
+            self.client.get(reverse("search"), {"query": "Rania"}).status_code, 200
+        )
+
+    def test_invalid_registration_displays_errors_without_creating_user(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "regular",
+                "password1": "Strong-pass-4819",
+                "password2": "Strong-pass-4819",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+        self.assertEqual(User.objects.filter(username="regular").count(), 1)
+
+    def test_successful_registration_creates_non_staff_user(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "new-user",
+                "password1": "Strong-pass-4819",
+                "password2": "Strong-pass-4819",
+            },
+        )
+
+        self.assertRedirects(response, reverse("my_login"))
+        new_user = User.objects.get(username="new-user")
+        self.assertFalse(new_user.is_staff)
+        self.assertFalse(new_user.is_superuser)
+
+    def test_invalid_login_preserves_the_bound_form_errors(self):
+        response = self.client.post(
+            reverse("my_login"), {"username": "regular", "password": "wrong"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+        self.assertEqual(response.context["form"]["username"].value(), "regular")
+
+    def test_regular_user_login_does_not_redirect_to_customer_dashboard(self):
+        response = self.client.post(
+            reverse("my_login"),
+            {"username": "regular", "password": "Strong-pass-4819"},
+        )
+
+        self.assertRedirects(response, reverse("Home"))
+
+    def test_delete_and_logout_reject_get_requests(self):
+        self.client.force_login(self.staff_user)
+
+        self.assertEqual(
+            self.client.get(reverse("delete", args=[self.clint.pk])).status_code, 405
+        )
+        self.assertEqual(self.client.get(reverse("my_logout")).status_code, 405)
+
+    def test_post_logout_ends_the_session(self):
+        self.client.force_login(self.staff_user)
+
+        response = self.client.post(reverse("my_logout"))
+
+        self.assertRedirects(response, reverse("my_login"))
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+    def test_staff_can_create_edit_and_delete_clients(self):
+        self.client.force_login(self.staff_user)
+        add_response = self.client.post(
+            reverse("add_clint"),
+            {"first_name": "Mona", "category": self.category.pk},
+        )
+        self.assertRedirects(add_response, reverse("dashboard"))
+        new_clint = Clint.objects.get(first_name="Mona")
+
+        edit_response = self.client.post(
+            reverse("edit", args=[new_clint.pk]),
+            {"first_name": "Mona Updated", "category": self.category.pk},
+        )
+        self.assertRedirects(edit_response, reverse("dashboard"))
+        new_clint.refresh_from_db()
+        self.assertEqual(new_clint.first_name, "Mona Updated")
+
+        delete_response = self.client.post(reverse("delete", args=[new_clint.pk]))
+        self.assertRedirects(delete_response, reverse("dashboard"))
+        self.assertFalse(Clint.objects.filter(pk=new_clint.pk).exists())
+
+    def test_invalid_client_creation_returns_dashboard_with_errors(self):
+        self.client.force_login(self.staff_user)
+
+        response = self.client.post(
+            reverse("add_clint"), {"first_name": "", "category": self.category.pk}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "web/dashboard.html")
+        self.assertTrue(response.context["form"].errors)
+
+    def test_delete_requires_a_valid_csrf_token(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.staff_user)
+
+        response = csrf_client.post(reverse("delete", args=[self.clint.pk]))
+        self.assertEqual(response.status_code, 403)
+
+        detail_response = csrf_client.get(reverse("view", args=[self.clint.pk]))
+        csrf_token = detail_response.cookies["csrftoken"].value
+        response = csrf_client.post(
+            reverse("delete", args=[self.clint.pk]),
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Clint.objects.filter(pk=self.clint.pk).exists())
