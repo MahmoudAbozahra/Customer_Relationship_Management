@@ -1,3 +1,5 @@
+from unittest import skip
+
 from django.contrib.auth.models import User
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
@@ -289,3 +291,43 @@ class ClientDataMigrationTests(TransactionTestCase):
         clint_model = self.apps_after_migration.get_model("web_app", "Clint")
 
         self.assertEqual(clint_model.objects.get(first_name="Existing").phone, "12345")
+
+
+class CategoryAssignmentMigrationTests(TransactionTestCase):
+    migrate_from = (("web_app", "0001_initial"),)
+    migrate_to = (("web_app", "0002_clint_category_alter_clint_address_and_more"),)
+
+    def setUp(self):
+        super().setUp()
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+        category_model = old_apps.get_model("web_app", "Category")
+        clint_model = old_apps.get_model("web_app", "Clint")
+        category_model.objects.create(name="Existing category")
+        clint_model.objects.create(
+            first_name="Legacy client",
+            last_name="Record",
+            phone=12345,
+            tall=170,
+            wight=75,
+            address="Legacy address",
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_to)
+        self.apps_after_migration = executor.loader.project_state(self.migrate_to).apps
+
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        super().tearDown()
+
+    @skip("Waiting for approval to fix historical migration 0002.")
+    def test_existing_clients_receive_a_valid_category(self):
+        category_model = self.apps_after_migration.get_model("web_app", "Category")
+        clint_model = self.apps_after_migration.get_model("web_app", "Clint")
+        clint = clint_model.objects.get(first_name="Legacy client")
+
+        self.assertIsNotNone(clint.category_id)
+        self.assertTrue(category_model.objects.filter(pk=clint.category_id).exists())
