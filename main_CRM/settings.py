@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -20,70 +22,136 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-iqwdn0m7gwypdn!o5bk6gulj%yo6i##vhgft_56zxejvdh50e&'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+def _env_bool(environment, name, default):
+    value = environment.get(name, default).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ImproperlyConfigured(f"{name} must be a boolean value.")
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']  
 
+def _security_configuration(environment):
+    debug = _env_bool(environment, "DJANGO_DEBUG", "true")
+    secret_key = environment.get("DJANGO_SECRET_KEY", "").strip()
+    allowed_hosts = [
+        host.strip()
+        for host in environment.get(
+            "DJANGO_ALLOWED_HOSTS",
+            "localhost,127.0.0.1,testserver" if debug else "",
+        ).split(",")
+        if host.strip()
+    ]
+
+    if debug and not secret_key:
+        secret_key = "django-insecure-local-development-only-key"
+    elif not secret_key:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY is required when DEBUG is disabled."
+        )
+
+    if not debug:
+        if (
+            len(secret_key) < 50
+            or len(set(secret_key)) < 5
+            or secret_key.startswith("django-insecure-")
+        ):
+            raise ImproperlyConfigured(
+                "DJANGO_SECRET_KEY must be a strong production secret."
+            )
+        if not allowed_hosts:
+            raise ImproperlyConfigured(
+                "DJANGO_ALLOWED_HOSTS is required when DEBUG is disabled."
+            )
+
+    return secret_key, debug, allowed_hosts
+
+
+def _deployment_security_configuration(environment, debug):
+    hsts_seconds = int(environment.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
+    if hsts_seconds < 0:
+        raise ImproperlyConfigured("DJANGO_SECURE_HSTS_SECONDS cannot be negative.")
+    return (
+        _env_bool(
+            environment, "DJANGO_SECURE_SSL_REDIRECT", "false" if debug else "true"
+        ),
+        not debug,
+        not debug,
+        hsts_seconds,
+        _env_bool(environment, "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", "false"),
+        _env_bool(environment, "DJANGO_SECURE_HSTS_PRELOAD", "false"),
+    )
+
+
+SECRET_KEY, DEBUG, ALLOWED_HOSTS = _security_configuration(os.environ)
 
 
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'web_app',
-    'crispy_forms',
-    'crispy_bootstrap4',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "web_app",
+    "crispy_forms",
+    "crispy_bootstrap4",
 ]
 
-CRISPY_TEMPLATE_PACK='bootstrap4'
+CRISPY_TEMPLATE_PACK = "bootstrap4"
+
+(
+    SECURE_SSL_REDIRECT,
+    SESSION_COOKIE_SECURE,
+    CSRF_COOKIE_SECURE,
+    SECURE_HSTS_SECONDS,
+    SECURE_HSTS_INCLUDE_SUBDOMAINS,
+    SECURE_HSTS_PRELOAD,
+) = _deployment_security_configuration(os.environ, DEBUG)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'main_CRM.urls'
+ROOT_URLCONF = "main_CRM.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR,'templates')],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [os.path.join(BASE_DIR, "templates")],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'main_CRM.wsgi.application'
+WSGI_APPLICATION = "main_CRM.wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
 
@@ -93,16 +161,16 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -110,9 +178,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "UTC"
 
 USE_I18N = True
 
@@ -122,19 +190,16 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 from django.contrib.messages import constants as messages
 
 MESSAGE_TAGS = {
     messages.ERROR: "danger",
-
 }
