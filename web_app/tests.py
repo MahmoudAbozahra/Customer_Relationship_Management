@@ -1,5 +1,5 @@
-from django.core.exceptions import ImproperlyConfigured
 from django.contrib.auth.models import User
+from django.core.exceptions import ImproperlyConfigured
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.models.deletion import ProtectedError
@@ -40,7 +40,9 @@ class SecurityConfigurationTests(SimpleTestCase):
             _security_configuration(
                 {
                     "DJANGO_DEBUG": "false",
-                    "DJANGO_SECRET_KEY": "this-is-a-long-test-secret-key-used-only-for-tests-0123456789",
+                    "DJANGO_SECRET_KEY": (
+                        "this-is-a-long-test-secret-key-used-only-for-tests-0123456789"
+                    ),
                 }
             )
 
@@ -259,8 +261,8 @@ class CRMAccessTests(TestCase):
 
 
 class ClientDataMigrationTests(TransactionTestCase):
-    migrate_from = [("web_app", "0003_alter_clint_options_alter_clint_created_at")]
-    migrate_to = [("web_app", "0004_alter_clint_category_alter_clint_phone")]
+    migrate_from = (("web_app", "0003_alter_clint_options_alter_clint_created_at"),)
+    migrate_to = (("web_app", "0004_alter_clint_category_alter_clint_phone"),)
 
     def setUp(self):
         super().setUp()
