@@ -1,48 +1,66 @@
-{% extends "base.html" %} {% load crispy_forms_tags %} {% block content %}
-<div class="text-center">
-    <table class="table">
+{% extends "base.html" %}
+{% block content %}
+<section class="container-fluid px-3 px-lg-4 py-4">
+    <h1 class="h2">Search results{% if query %} for &ldquo;{{ query }}&rdquo;{% endif %}</h1>
+    <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
         <thead class="thead-dark">
             <tr>
                 <th scope="col">ID</th>
-                <th scope="col">first_name</th>
-                <th scope="col">last_name</th>
-                <th scope="col">phone</th>
-                <th scope="col">tall</th>
-                <th scope="col">wight</th>
-                <th scope="col">address</th>
-                <th scope="col">category</th>
-                <th scope="col">Date</th>
+                <th scope="col">First name</th>
+                <th scope="col">Last name</th>
+                <th scope="col">Phone</th>
+                <th scope="col">Height</th>
+                <th scope="col">Weight</th>
+                <th scope="col">Address</th>
+                <th scope="col">Category</th>
+                <th scope="col">Created</th>
                 <th scope="col">View</th>
             </tr>
         </thead>
         <tbody>
-            {% if results %} {% for result in results %}
+            {% for result in results %}
             <tr>
                 <th scope="row">{{ result.id }}</th>
                 <td>{{ result.first_name }}</td>
-                <td>{{ result.last_name }}</td>
-                <td>{{ result.phone }}</td>
-                <td>{{ result.tall }}</td>
-                <td>{{ result.wight }}</td>
-                <td>{{ result.address }}</td>
+                <td>{{ result.last_name|default:"-" }}</td>
+                <td>{{ result.phone|default:"-" }}</td>
+                <td>{{ result.tall|default:"-" }}</td>
+                <td>{{ result.wight|default:"-" }}</td>
+                <td>{{ result.address|default:"-" }}</td>
                 <td>{{ result.category }}</td>
                 <td>{{ result.created_at|date:"Y-m-d" }}</td>
                 <td>
                     <a href="{% url 'view' result.id %}" class="btn btn-outline-primary btn-sm">View</a>
                 </td>
             </tr>
-            {% endfor %} {% else %}
+            {% empty %}
             <tr>
-                <td colspan="110" class="text-center">
-                    <br>
-                    <div class="alert-warning" role="alert">Not Found</div>
-                </td>
+                <td colspan="10" class="text-center py-4 text-muted">No matching clients found.</td>
             </tr>
-            {%endif%}
+            {% endfor %}
         </tbody>
     </table>
 
 </div>
+{% if results.has_other_pages %}
+<nav aria-label="Search result pages">
+  <ul class="pagination">
+    {% if results.has_previous %}
+      <li class="page-item"><a class="page-link" href="?query={{ query|urlencode }}&amp;page={{ results.previous_page_number }}">Previous</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Previous</span></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ results.number }} of {{ results.paginator.num_pages }}</span></li>
+    {% if results.has_next %}
+      <li class="page-item"><a class="page-link" href="?query={{ query|urlencode }}&amp;page={{ results.next_page_number }}">Next</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Next</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+</section>
 
 
 {% endblock content %}

@@ -94,6 +94,24 @@
     </table>
 </div>
 
+{% if clints.has_other_pages %}
+<nav class="container-fluid px-3 px-lg-4" aria-label="Client pages">
+  <ul class="pagination">
+    {% if clints.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ clints.previous_page_number }}">Previous</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Previous</span></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ clints.number }} of {{ clints.paginator.num_pages }}</span></li>
+    {% if clints.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ clints.next_page_number }}">Next</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Next</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
 {% if form.errors %}
 <script>
   document.addEventListener("DOMContentLoaded", () => {

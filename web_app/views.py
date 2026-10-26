@@ -2,12 +2,17 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .forms import ClintForm, CreateUserForm, LoginForm
 from .models import Clint
+
+
+def _paginate_clients(queryset, request):
+    return Paginator(queryset, 25).get_page(request.GET.get("page"))
 
 
 # Create your views here.
@@ -50,7 +55,7 @@ def my_logout(request):
 
 @staff_member_required(login_url="my_login")
 def dashboard(request):
-    clints = Clint.objects.select_related("category").all()
+    clints = _paginate_clients(Clint.objects.select_related("category").all(), request)
     return render(
         request, "web/dashboard.html", {"clints": clints, "form": ClintForm()}
     )
@@ -64,7 +69,7 @@ def add_clint(request):
         messages.success(request, "Client added successfully.")
         return redirect("dashboard")
 
-    clints = Clint.objects.select_related("category").all()
+    clints = _paginate_clients(Clint.objects.select_related("category").all(), request)
     return render(request, "web/dashboard.html", {"clints": clints, "form": form})
 
 
@@ -104,6 +109,7 @@ def search(request):
             Q(first_name__icontains=query) | Q(id__icontains=query)
         )
 
+    results = _paginate_clients(results, request)
     return render(request, "web/search.html", {"results": results, "query": query})
 
 

@@ -238,6 +238,25 @@ class CRMAccessTests(TestCase):
 
         self.assertEqual(Clint.objects.get(pk=clint.pk).phone, "012345")
 
+    def test_client_lists_are_paginated_and_search_query_is_preserved(self):
+        self.client.force_login(self.staff_user)
+        Clint.objects.bulk_create(
+            [
+                Clint(first_name=f"Batch {index}", category=self.category)
+                for index in range(26)
+            ]
+        )
+
+        response = self.client.get(reverse("search"), {"query": "Batch"})
+
+        self.assertEqual(response.context["results"].paginator.per_page, 25)
+        self.assertEqual(response.context["results"].paginator.num_pages, 2)
+        self.assertContains(response, "query=Batch&amp;page=2")
+
+    def test_select_related_loads_category_with_one_query(self):
+        with self.assertNumQueries(1):
+            list(Clint.objects.select_related("category").all())
+
 
 class ClientDataMigrationTests(TransactionTestCase):
     migrate_from = [("web_app", "0003_alter_clint_options_alter_clint_created_at")]
