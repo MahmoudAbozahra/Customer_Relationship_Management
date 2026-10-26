@@ -1,67 +1,66 @@
-{% extends 'base.html'%}
+{% extends 'base.html' %}
 {% load crispy_forms_tags %}
 {% block content %}
 
-<h1 style="padding-left:50px ;">Welcome to the dashboard page,<b>{{user}}👋 </b></h1>
+<h1 class="container-fluid py-4">Client dashboard, {{ user.get_username }}</h1>
 
-<div style="padding-left:50px ;">
-    <hr style="border:1px solid black ; margin: 20px 10px;">
+<div class="container-fluid px-3 px-lg-4">
+    <hr class="my-4">
 
     <!-- Button trigger modal -->
-    <button type="button" class="btn btn-outline-primary" data-toggle="modal" data-target="#addClintModal">
-      Add Clint <i class="fa fa-plus" aria-hidden="true"></i>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addClintModal">
+      Add client
     </button>
 
 </div>
 
 <!-- Modal -->
-<div class="modal fade" id="addClintModal" tabindex="-1" role="dialog" aria-labelledby="addClintModalLabel" aria-hidden="true">
-  <div class="modal-dialog" role="document">
+<div class="modal fade" id="addClintModal" tabindex="-1" aria-labelledby="addClintModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <form method="POST" action="{% url 'add_clint' %}">
         {% csrf_token %}
         <div class="modal-header">
-          <h5 class="modal-title" id="addClintModalLabel">Add New Clint</h5>
-          <button type="button" class="close ms-auto" data-dismiss="modal" aria-label="Close">
-            <span aria-hidden="true">&times;</span>
-          </button>
+          <h2 class="modal-title fs-5" id="addClintModalLabel">Add a client</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
           {{ form|crispy}}  
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-          <button type="submit" class="btn btn-primary">Save Clint</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary">Save client</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 
-<hr style="border:1px solid black ; margin: 20px 10px;"> 
-{% include 'parts/alerts.html' %}
-
-<div class="text-center" style="margin: 0px 100px;">
-    <form action="{% url 'search' %}" method="get">
-        <input type="search" name="query" placeholder="write something here" class="form-control mr-sm-2">
-        <button type="submit" class="btn btn-outline-dark w-100 btn-block p-2">Searsh</button>
+<hr class="my-4">
+<div class="container-fluid px-3 px-lg-4">
+    <form action="{% url 'search' %}" method="get" class="row g-2" role="search">
+        <div class="col-sm-9 col-lg-10">
+          <label class="visually-hidden" for="client-search">Search clients</label>
+          <input id="client-search" type="search" name="query" value="{{ request.GET.query }}" placeholder="Search by name or ID" class="form-control">
+        </div>
+        <div class="col-sm-3 col-lg-2 d-grid"><button type="submit" class="btn btn-outline-dark">Search</button></div>
     </form>
-    <hr style="border:1px solid black ; margin: 20px 10px;">
+    <hr class="my-4">
 </div>
 
-<div class="text-center">
+<div class="container-fluid px-3 px-lg-4 table-responsive">
     <table class="table">
-        <thead class="thead-dark">
+        <thead class="table-dark">
             <tr>
                 <th scope="col">ID</th>
-                <th scope="col">first_name</th>
-                <th scope="col">last_name</th>
-                <th scope="col">phone</th>
-                <th scope="col">tall</th>
-                <th scope="col">wight</th>
-                <th scope="col">address</th>
-                <th scope="col">category</th>
-                <th scope="col">Date</th>
+                <th scope="col">First name</th>
+                <th scope="col">Last name</th>
+                <th scope="col">Phone</th>
+                <th scope="col">Height</th>
+                <th scope="col">Weight</th>
+                <th scope="col">Address</th>
+                <th scope="col">Category</th>
+                <th scope="col">Created</th>
                 <th scope="col">View</th>
             </tr>
         </thead>
@@ -71,11 +70,11 @@
             <tr>
                 <th scope="row">{{ clint.id }}</th>
                 <td>{{ clint.first_name }}</td>
-                <td>{{ clint.last_name }}</td>
-                <td>{{ clint.phone }}</td>
-                <td>{{ clint.tall }}</td>
-                <td>{{ clint.wight }}</td>
-                <td>{{ clint.address }}</td>
+                <td>{{ clint.last_name|default:"—" }}</td>
+                <td>{{ clint.phone|default:"—" }}</td>
+                <td>{{ clint.tall|default:"—" }}</td>
+                <td>{{ clint.wight|default:"—" }}</td>
+                <td>{{ clint.address|default:"—" }}</td>
                 <td>{{ clint.category }}</td>
                 <td>{{ clint.created_at|date:"Y-m-d" }}</td>
                 <td>
@@ -87,7 +86,7 @@
             <tr>
                 <td colspan="110" class="text-center">
                     <br>
-                    <div class="alert-warning" role="alert">You don't have any clint</div>
+                    <div class="alert alert-warning" role="alert">You don't have any clients</div>
                 </td>
             </tr>
             {%endif%}
@@ -95,4 +94,30 @@
     </table>
 </div>
 
+{% if clints.has_other_pages %}
+<nav class="container-fluid px-3 px-lg-4" aria-label="Client pages">
+  <ul class="pagination">
+    {% if clints.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ clints.previous_page_number }}">Previous</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Previous</span></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ clints.number }} of {{ clints.paginator.num_pages }}</span></li>
+    {% if clints.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ clints.next_page_number }}">Next</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Next</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+{% if form.errors %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const modal = document.getElementById("addClintModal");
+    if (modal && window.bootstrap) new bootstrap.Modal(modal).show();
+  });
+</script>
+{% endif %}
 {% endblock content %}

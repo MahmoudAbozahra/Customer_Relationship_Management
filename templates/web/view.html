@@ -1,24 +1,28 @@
-{% extends "base.html" %} {% block content %}
-<div class="cart" style="padding-left:100px ; padding-top: 100px;">
-
-
-    <h3 style="padding-left:900px ;"><b>{{user}}<i class="fa fa-user" aria-hidden="true"></i> </b></h3>
-    <hr style="border:1px solid black ; margin: 20px 10px;">
-
-    <h3>
-        <pre><strong>ID: </strong>{{clint.id}}</pre>
-        <pre><strong>Full Name:</strong>{{clint.first_name|capfirst}} {{clint.last_name|capfirst}}</pre>
-        <pre><strong>Phone: </strong>{{clint.phone}}</pre>
-        <pre><strong>Tall: </strong>{{clint.tall}}</pre>
-        <pre><strong>Wight: </strong>{{clint.wight}}</pre>
-        <pre><strong>Address: </strong>{{clint.address}}</pre>
-        <pre><strong>Category: </strong>{{clint.category}}</pre>
-        <pre><strong>Date: </strong>{{clint.created_at}}</pre>
-    </h3>
-    <a href="{% url 'edit' clint.id %}" class="btn btn-outline-primary btn-sm">Update <i class="fa fa-wrench" aria-hidden="true"></i></a>
-    <a style="background-color: red;"  href="{% url 'delete' clint.id %}" onclick="return confirm('Are you sure to delete this clint?');" class="btn btn-outline-primary btn-sm">Delete <i class="fa fa-trash" aria-hidden="true"></i></a>
-
-</div>
-
-
+{% extends "base.html" %}
+{% block content %}
+<section class="container py-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+    <h1 class="h2 mb-0">Client details</h1>
+    <span class="text-muted">{{ user.get_username }}</span>
+  </div>
+  <dl class="row">
+    <dt class="col-sm-3">ID</dt><dd class="col-sm-9">{{ clint.id }}</dd>
+    <dt class="col-sm-3">First name</dt><dd class="col-sm-9">{{ clint.first_name|capfirst }}</dd>
+    <dt class="col-sm-3">Last name</dt><dd class="col-sm-9">{{ clint.last_name|default:"—"|capfirst }}</dd>
+    <dt class="col-sm-3">Phone</dt><dd class="col-sm-9">{{ clint.phone|default:"—" }}</dd>
+    <dt class="col-sm-3">Height</dt><dd class="col-sm-9">{{ clint.tall|default:"—" }}</dd>
+    <dt class="col-sm-3">Weight</dt><dd class="col-sm-9">{{ clint.wight|default:"—" }}</dd>
+    <dt class="col-sm-3">Address</dt><dd class="col-sm-9">{{ clint.address|default:"—" }}</dd>
+    <dt class="col-sm-3">Category</dt><dd class="col-sm-9">{{ clint.category }}</dd>
+    <dt class="col-sm-3">Created</dt><dd class="col-sm-9">{{ clint.created_at|date:"Y-m-d" }}</dd>
+  </dl>
+  <div class="d-flex gap-2">
+    <a href="{% url 'edit' clint.id %}" class="btn btn-outline-primary">Edit</a>
+    <form method="post" action="{% url 'delete' clint.id %}" onsubmit="return confirm('Delete this client?');">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline-danger">Delete</button>
+    </form>
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Back</a>
+  </div>
+</section>
 {% endblock content %}
